@@ -1,5 +1,5 @@
 import tkinter as tk
-
+import random  # To generate random chances for power-ups
 
 class GameObject(object):
     def __init__(self, canvas, item):
@@ -100,10 +100,43 @@ class Brick(GameObject):
     def hit(self):
         self.hits -= 1
         if self.hits == 0:
+            if random.random() < 0.3:
+                self.drop_powerup(game)
             self.delete()
         else:
             self.canvas.itemconfig(self.item,
                                    fill=Brick.COLORS[self.hits])
+            
+    def drop_powerup(self, game):
+        """Drop a power-up when the brick is destroyed."""
+        coords = self.get_position()
+        x = (coords[0] + coords[2]) / 2
+        y = (coords[1] + coords[3]) / 2
+        powerup_type = random.choice(list(PowerUp.TYPES.keys()))  # Randomly pick a power-up type
+        powerup = PowerUp(self.canvas, x, y, powerup_type)
+        game.powerups.append(powerup)
+
+class PowerUp(GameObject):
+    TYPES = {
+        "enlarge_paddle": "green",
+        "fast_ball": "blue",
+        "extra_life": "white",
+    }
+
+    def __init__(self, canvas, x, y, type):
+        self.type = type  # Type of the power-up
+        self.width = 20
+        self.height = 20
+        color = PowerUp.TYPES[type]
+        item = canvas.create_oval(x - self.width / 2, y - self.height / 2,
+                                  x + self.width / 2, y + self.height / 2,
+                                  fill=color, tags='powerup')
+        super(PowerUp, self).__init__(canvas, item)
+
+    def fall(self):
+        """Make the power-up fall down the screen."""
+        self.move(0, 5)  # Adjust the speed as needed
+
 
 
 class Game(tk.Frame):
@@ -117,10 +150,13 @@ class Game(tk.Frame):
                                 height=self.height,)
         self.canvas.pack()
         self.pack()
+        self.powerups = []
 
         self.items = {}
         self.ball = None
         self.paddle = Paddle(self.canvas, self.width/2, 450)
+        self.initial_paddle_width = self.paddle.width
+        self.enlarge_paddle_count = 0
         self.items[self.paddle.item] = self.paddle
         # First layer (closest to the paddle): Bricks with 1 hit value
         for x in range(5, self.width - 5, 65):  # Adjust the gap to fit bricks evenly
@@ -196,6 +232,7 @@ class Game(tk.Frame):
 
     def game_loop(self):
         self.check_collisions()
+        self.check_powerup_collisions()
         num_bricks = len(self.canvas.find_withtag('brick'))
         if num_bricks == 0: 
             self.ball.speed = None
@@ -209,6 +246,7 @@ class Game(tk.Frame):
                 self.after(1000, self.setup_game)
         else:
             self.ball.update()
+            self.update_powerups()
             self.after(50, self.game_loop)
 
     def check_collisions(self):
@@ -217,6 +255,57 @@ class Game(tk.Frame):
         objects = [self.items[x] for x in items if x in self.items]
         self.ball.collide(objects)
 
+    def update_powerups(self):
+        """Update the position of all falling power-ups."""
+        for powerup in self.powerups:
+            powerup.fall()
+            # Remove power-ups that fall off the screen
+            if powerup.get_position()[3] >= self.height:
+                self.powerups.remove(powerup)
+                powerup.delete()
+    
+    def reset_paddle_size(self):
+        """Reset the paddle to its initial size."""
+        self.paddle.width = self.initial_paddle_width
+        x1, y1, x2, y2 = self.paddle.get_position()
+        self.canvas.coords(self.paddle.item, x1, y1, x1 + self.initial_paddle_width, y2)
+
+        # Reset the power-up counter so the player can enlarge the paddle again
+        self.enlarge_paddle_count = 0
+
+    
+    def check_powerup_collisions(self):
+        """Check for collisions between the paddle and power-ups."""
+        paddle_coords = self.paddle.get_position()
+        for powerup in self.powerups:
+            powerup_coords = powerup.get_position()
+            if (paddle_coords[0] < powerup_coords[2] and
+                paddle_coords[2] > powerup_coords[0] and
+                paddle_coords[1] < powerup_coords[3] and
+                paddle_coords[3] > powerup_coords[1]):
+                self.apply_powerup(powerup)
+                self.powerups.remove(powerup)
+                powerup.delete()
+
+    def apply_powerup(self, powerup):
+        """Apply the effect of a power-up."""
+        if powerup.type == "enlarge_paddle":
+            new_width = min(self.canvas.winfo_width(), self.paddle.width + 30)
+            x1, y1, x2, y2 = self.paddle.get_position()
+            self.paddle.width = new_width
+            self.canvas.coords(self.paddle.item, x1, y1, x1 + new_width, y2)
+            self.enlarge_paddle_count += 1
+            if self.enlarge_paddle_count == 1:
+                self.canvas.after(10000, self.reset_paddle_size)
+        elif powerup.type == "fast_ball":
+            self.ball.speed = min(16, max(8, self.ball.speed + 2))
+        elif powerup.type == "extra_life":
+            if self.lives < 5:
+                self.lives += 1
+                self.update_lives_text()
+            else:
+                self.draw_text(390, 550, "Max lives reached!", size="15", color="#ff0000")
+                self.after(1000, lambda: self.canvas.delete("max_lives_message"))  # Remove message after 1 second
 
 if __name__ == '__main__':
     root = tk.Tk()
