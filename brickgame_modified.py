@@ -286,6 +286,9 @@ class Game(tk.Frame):
                 self.apply_powerup(powerup)
                 self.powerups.remove(powerup)
                 powerup.delete()
+    
+    def remove_max_lives_message(self, message):
+        self.canvas.delete(message)
 
     def apply_powerup(self, powerup):
         """Apply the effect of a power-up."""
@@ -304,8 +307,8 @@ class Game(tk.Frame):
                 self.lives += 1
                 self.update_lives_text()
             else:
-                self.draw_text(390, 550, "Max lives reached!", size="15", color="#ff0000")
-                self.after(1000, lambda: self.canvas.delete("max_lives_message"))  # Remove message after 1 second
+                message = self.draw_text(390, 550, "Max lives reached!", size="15", color="#ff0000")
+                self.after(1000, self.remove_max_lives_message, message)  # Remove message after 1 second
 
 if __name__ == '__main__':
     root = tk.Tk()
